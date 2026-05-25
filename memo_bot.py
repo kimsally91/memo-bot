@@ -48,6 +48,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def memo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     content = " ".join(context.args)
+
     if not content:
         await update.message.reply_text("메모 내용을 입력해줘.")
         return
@@ -68,6 +69,7 @@ async def memo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyword = " ".join(context.args)
+
     if not keyword:
         await update.message.reply_text("검색어 입력.")
         return
@@ -96,7 +98,9 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def list_memos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, content, created_at FROM memos ORDER BY id DESC LIMIT 20")
+    cur.execute(
+        "SELECT id, content, created_at FROM memos ORDER BY id DESC LIMIT 20"
+    )
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -133,10 +137,22 @@ async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("번호 없음.")
 
 
-def run_telegram_bot():
+def start_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    web_app.run(
+        host="0.0.0.0",
+        port=port,
+        use_reloader=False
+    )
+
+
+def main():
+    threading.Thread(target=start_web_server, daemon=True).start()
+
     init_db()
 
     app = ApplicationBuilder().token(TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("memo", memo))
     app.add_handler(CommandHandler("search", search))
@@ -144,11 +160,9 @@ def run_telegram_bot():
     app.add_handler(CommandHandler("delete", delete))
 
     print("메모봇 실행 중")
+
     app.run_polling()
 
 
 if __name__ == "__main__":
-    threading.Thread(target=run_telegram_bot, daemon=True).start()
-
-    port = int(os.environ.get("PORT", 10000))
-    web_app.run(host="0.0.0.0", port=port)
+    main()

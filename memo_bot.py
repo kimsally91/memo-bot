@@ -1,7 +1,7 @@
 import os
 import threading
 import psycopg2
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask
 from telegram import Update
 from telegram.ext import (
@@ -69,7 +69,7 @@ async def save_memo(content):
     conn = get_connection()
     cur = conn.cursor()
 
-    created_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    created_at = (datetime.utcnow() + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")
 
     cur.execute(
         "INSERT INTO memos (content, created_at) VALUES (%s, %s) RETURNING id",

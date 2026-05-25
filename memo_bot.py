@@ -153,11 +153,11 @@ def main():
 
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("memo", memo))
-    app.add_handler(CommandHandler("search", search))
-    app.add_handler(CommandHandler("list", list_memos))
-    app.add_handler(CommandHandler("delete", delete))
+    app.add_handler(CommandHandler(["start", "시작"], start))
+    app.add_handler(CommandHandler(["memo", "메모"], memo))
+    app.add_handler(CommandHandler(["search", "검색"], search))
+    app.add_handler(CommandHandler(["list", "목록"], list_memos))
+    app.add_handler(CommandHandler(["delete", "삭제"], delete))
 
     print("메모봇 실행 중")
 

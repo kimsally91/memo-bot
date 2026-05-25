@@ -6,7 +6,6 @@ from flask import Flask
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
-    CommandHandler,
     MessageHandler,
     ContextTypes,
     filters,
@@ -44,26 +43,29 @@ def init_db():
     conn.close()
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = """
-메모봇 시작!
+def auto_tag(text):
+    tags = []
 
-사용법:
+    if any(word in text for word in ["주식", "삼성", "엔비디아", "코스피"]):
+        tags.append("#주식")
 
-메모 내용
-검색 키워드
-목록
-삭제 번호
+    if any(word in text for word in ["배민", "치킨", "가게", "후라이드"]):
+        tags.append("#가게")
 
-예시:
-메모 오늘 닭상태 좋았음
-검색 닭
-"""
+    if any(word in text for word in ["레시피", "소스", "마요"]):
+        tags.append("#레시피")
 
-    await update.message.reply_text(text)
+    if not tags:
+        tags.append("#개인")
+
+    return " ".join(tags)
 
 
 async def save_memo(content):
+    tag_text = auto_tag(content)
+
+    final_content = f"{tag_text}\n{content}"
+
     conn = get_connection()
     cur = conn.cursor()
 
@@ -71,7 +73,7 @@ async def save_memo(content):
 
     cur.execute(
         "INSERT INTO memos (content, created_at) VALUES (%s, %s) RETURNING id",
-        (content, created_at)
+        (final_content, created_at)
     )
 
     memo_id = cur.fetchone()[0]
@@ -135,15 +137,64 @@ async def delete_memo(memo_id):
     return deleted
 
 
+async def update_memo(memo_id, new_content):
+    tag_text = auto_tag(new_content)
+
+    final_content = f"{tag_text}\n{new_content}"
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(
+        "UPDATE memos SET content = %s WHERE id = %s",
+        (final_content, memo_id)
+    )
+
+    conn.commit()
+
+    updated = cur.rowcount
+
+    cur.close()
+    conn.close()
+
+    return updated
+
+
+async def backup_memos(update):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT id, content, created_at FROM memos ORDER BY id ASC"
+    )
+
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    if not rows:
+        await update.message.reply_text("메모 없음.")
+        return
+
+    backup_text = ""
+
+    for row in rows:
+        backup_text += f"[{row[0]}] {row[2]}\n{row[1]}\n\n"
+
+    file_name = "memo_backup.txt"
+
+    with open(file_name, "w", encoding="utf-8") as f:
+        f.write(backup_text)
+
+    await update.message.reply_document(document=open(file_name, "rb"))
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
 
     if text.startswith("메모 "):
         content = text[3:].strip()
-
-        if not content:
-            await update.message.reply_text("메모 내용을 입력해줘.")
-            return
 
         memo_id = await save_memo(content)
 
@@ -153,10 +204,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif text.startswith("검색 "):
         keyword = text[3:].strip()
-
-        if not keyword:
-            await update.message.reply_text("검색어 입력.")
-            return
 
         rows = await search_memos(keyword)
 
@@ -195,13 +242,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("번호 없음.")
 
+    elif text.startswith("수정 "):
+        parts = text.split(" ", 2)
+
+        if len(parts) < 3:
+            await update.message.reply_text(
+                "사용법:\n수정 번호 내용"
+            )
+            return
+
+        memo_id = parts[1]
+        new_content = parts[2]
+
+        updated = await update_memo(memo_id, new_content)
+
+        if updated:
+            await update.message.reply_text("수정 완료.")
+        else:
+            await update.message.reply_text("번호 없음.")
+
+    elif text == "백업":
+        await backup_memos(update)
+
     else:
         await update.message.reply_text(
             "사용법:\n\n"
             "메모 내용\n"
             "검색 키워드\n"
             "목록\n"
-            "삭제 번호"
+            "수정 번호 내용\n"
+            "삭제 번호\n"
+            "백업"
         )
 
 
@@ -225,9 +296,11 @@ def main():
 
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
     app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            handle_message
+        )
     )
 
     print("메모봇 실행 중")
